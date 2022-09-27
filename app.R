@@ -220,7 +220,7 @@ server <- function(input, output, session) {
       ###
       
       # Compute average change in accessibility
-      weighted_access_change <- weighted.mean(values(difference) - values(weight_cropped), na.rm = T)
+      weighted_access_change <- weighted.mean(values(difference), values(weight_cropped), na.rm = T)
       
       # Compute % change in accessibility
       diff_pct <- ((build_num - baseline_num) / baseline_num)
