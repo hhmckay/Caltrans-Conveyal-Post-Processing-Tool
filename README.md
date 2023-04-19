@@ -1,6 +1,4 @@
-# Caltrans-Conveyal-Post-Processing-Tool
+# Conveyal-Post-Processing-Tool
 An R Shiny app to process Conveyal .tiff outputs and generate accessibility metrics/maps.
-Notes:
-- In order to view maps, a weight .TIFF must be uploaded, even though this parameter is labeled as optional. If a weight .TIFF isn't uploaded, the user will receive a red error message on the maps tab. This is an error that will be fixed.
-
-![ToolGUI](https://user-images.githubusercontent.com/56372705/192584334-4eb7fcfc-7cf3-434a-bde3-65313b35ee5d.PNG)
+![Tab1](https://user-images.githubusercontent.com/56372705/233145922-b0c4ef70-9ba8-4e3d-ad66-8fcb649ac1a2.PNG)
+![tab2](https://user-images.githubusercontent.com/56372705/233145935-9d669d51-f929-42e4-a23e-a5b402eb06eb.PNG)
