@@ -1,6 +1,6 @@
-# Conveyal Post-Processing Tool (for CSIS mode shift analysis)
+# Conveyal Post-Processing Tool
 # Henry.McKay@dot.ca.gov
-# Last update: 07/21/2023
+# Last update: 04/18/2023
 
 # Load packages (will need to be installed first if not already)
 library(shiny)
@@ -24,11 +24,9 @@ tab1 <- tabPanel(
   sidebarLayout(
     sidebarPanel(
       textInput("project_name", "Project Name", value = "", width = NULL, placeholder = NULL),
-      helpText("Upload Accessibility .TIFFs"),
-      fileInput("baseline_multimodal_tiff", "Baseline Multimodal .TIFF Output", multiple = FALSE),
-      fileInput("project_multimodal_tiff", "Build Multimodal .TIFF Output", multiple = FALSE),
-      fileInput("baseline_auto_tiff", "Baseline Auto .TIFF Output", multiple = FALSE),
-      fileInput("project_auto_tiff", "Build Auto .TIFF Output", multiple = FALSE),
+      helpText("Upload Conveyal Outputs"),
+      fileInput("baseline_tiff", "Baseline Conveyal .TIFF Output", multiple = FALSE),
+      fileInput("project_tiff", "Project Conveyal .TIFF Output", multiple = FALSE),
       fileInput("weight_tiff", "Weight .TIFF", multiple = FALSE),
       fileInput("shapefile_input", "Project Extent Shapefile", multiple = T,
                 accept = c('.shp','.dbf','.sbn','.sbx','.shx','.prj', '.cpg')),
@@ -46,12 +44,12 @@ tab3 <- tabPanel(
   title = "Map",
   sidebarLayout(
     sidebarPanel(
-      selectInput("map_options", "Select Raster to Map", choices = c("Baseline Accessibility Ratio", 
-                                                                     "Build Accessibility Ratio",
-                                                                     "Change in Accessibility Ratio",
-                                                                     "Weighted Change in Accessibility Ratio")),
-      helpText("Note: The weighted change in accessibility ratio map is meant only to show where the relative
-               changes in accessibility occur when accounting for a weighting factor, using a color scale. 
+      selectInput("map_options", "Select Raster to Map", choices = c("Baseline Accessibility", 
+                                                                     "Project Accessibility",
+                                                                     "Accessibility Change",
+                                                                     "Weighted Accessibility Change")),
+      helpText("Note: The weighted accessibility change map is meant only to show where the relative
+               changes in accessibility occur when accounting for a weighitng factor, using a color scale. 
                Individual numbers associated with these changes should only be analyzed in the context
                of aggregate metrics, such as the ones shown on the project analysis tab.")
     ),
@@ -64,7 +62,7 @@ tab3 <- tabPanel(
 
 # Assemble UI
 ui <- navbarPage(
-  title = "CSIS Mode Shift Metric Post-Processing Tool",
+  title = "Conveyal Post-Processing Tool",
   tab1,
   tab3
 )
@@ -104,10 +102,8 @@ server <- function(input, output, session) {
     
     # Validate input .tiff files
     validate(
-      need(input$baseline_multimodal_tiff != "", "Please upload a baseline multimodal .tiff file"),
-      need(input$project_multimodal_tiff != "", "Please upload a project multimodal .tiff file"),
-      need(input$baseline_auto_tiff != "", "Please upload baseline auto .tiff file"),
-      need(input$project_auto_tiff != "", "Please upload a project auto .tiff file"),
+      need(input$baseline_tiff != "", "Please upload baseline .tiff file"),
+      need(input$project_tiff != "", "Please upload a project .tiff file"),
       need(input$weight_tiff != "", "Please upload a weight .tiff file"),
       need(input$shapefile_input != "", "Please upload a project shapefile")
     )
@@ -118,47 +114,32 @@ server <- function(input, output, session) {
     buffer <- st_buffer(project_extent, (input$buffer * 1000)) # Convert input (in kilometers) to meters
     buffer_diss <- st_as_sf(st_union(buffer))
     
-    # Read in files and create ratios
-    baseline_multimodal <- raster(input$baseline_multimodal_tiff$datapath)
-    build_multimodal <- raster(input$project_multimodal_tiff$datapath)
-    baseline_auto <- raster(input$baseline_auto_tiff$datapath)
-    build_auto <- raster(input$project_auto_tiff$datapath)
+    # Read in baseline and build .TIFF files
+    baseline <- raster(input$baseline_tiff$datapath)
+    build <- raster(input$project_tiff$datapath)
     
-    baseline_multimodal <- crop(baseline_multimodal, build_multimodal)
-    baseline_auto <- crop(baseline_auto, build_auto)
-    
-    baseline_ratio <- (baseline_multimodal / baseline_auto)
-    baseline_ratio[is.nan(baseline_ratio[])] <- 0
-    baseline_ratio[is.infinite(baseline_ratio[])] <- 0
-    baseline_ratio[] = ifelse(baseline_ratio[] <= 1, baseline_ratio[], 1)
-    
-    build_ratio <- (build_multimodal / build_auto)
-    build_ratio[is.nan(build_ratio[])] <- 0
-    build_ratio[is.infinite(build_ratio[])] <- 0
-    build_ratio[] = ifelse(build_ratio[] <= 1, build_ratio[], 1)  
-    
-    baseline_ratio <- crop(baseline_ratio, build_ratio)
+    baseline <- crop(baseline, build)
     
     ### Calculate metrics
     # Read weight raster, crop to buffer
     weight <- raster(input$weight_tiff$datapath)
-    weight <- crop(weight, baseline_ratio)
+    weight <- crop(weight, build)
     weight_cropped <- mask(weight, buffer_diss)
     
     # Baseline
-    baseline_cropped <- mask(baseline_ratio, buffer_diss)
+    baseline_cropped <- mask(baseline, buffer_diss)
     baseline_num <- sum(values(baseline_cropped), na.rm = T)
     
     # Build
-    build_cropped <- mask(build_ratio, buffer_diss)
+    build_cropped <- mask(build, buffer_diss)
     build_num <- sum(values(build_cropped), na.rm = T)
     
     # Difference
     difference <- build_cropped - baseline_cropped
     
     # Weight baseline and build .TIFFs
-    baseline_weighted <- baseline_ratio * weight_cropped
-    build_weighted <- build_ratio * weight_cropped
+    baseline_weighted <- baseline * weight_cropped
+    build_weighted <- build * weight_cropped
     
     # Weighted Baseline
     w_baseline_cropped <- mask(baseline_weighted, buffer_diss)
@@ -221,44 +202,14 @@ server <- function(input, output, session) {
     
     # Validate input .tiff files
     validate(
-      need(input$baseline_multimodal_tiff != "", "Please upload a baseline multimodal .tiff file"),
-      need(input$project_multimodal_tiff != "", "Please upload a project multimodal .tiff file"),
-      need(input$baseline_auto_tiff != "", "Please upload baseline auto .tiff file"),
-      need(input$project_auto_tiff != "", "Please upload a project auto .tiff file"),
+      need(input$baseline_tiff != "", "Please upload a baseline .tiff file"),
+      need(input$project_tiff != "", "Please upload a project .tiff file"),
       need(input$weight_tiff != "", "Please upload a weight .tiff file"),
       need(input$shapefile_input != "", "Please upload a project shapefile")
     )
     
-    # Read in project shapefile and apply buffer at specified distance
-    project_extent <- st_as_sf(project_extent())
-    project_extent <- st_transform(project_extent, crs = 3857)
-    buffer <- st_buffer(project_extent, (input$buffer * 1000)) # Convert input (in kilometers) to meters
-    buffer_diss <- st_as_sf(st_union(buffer))
-    
-    # Read in files and create ratios
-    baseline_multimodal <- raster(input$baseline_multimodal_tiff$datapath)
-    build_multimodal <- raster(input$project_multimodal_tiff$datapath)
-    baseline_auto <- raster(input$baseline_auto_tiff$datapath)
-    build_auto <- raster(input$project_auto_tiff$datapath)
-    
-    baseline_multimodal <- crop(baseline_multimodal, build_multimodal)
-    baseline_auto <- crop(baseline_auto, build_auto)
-    
-    baseline_ratio <- (baseline_multimodal / baseline_auto)
-    baseline_ratio[is.nan(baseline_ratio[])] <- 0
-    baseline_ratio[is.infinite(baseline_ratio[])] <- 0
-    baseline_ratio[] = ifelse(baseline_ratio[] <= 1, baseline_ratio[], 1)
-    
-    build_ratio <- (build_multimodal / build_auto)
-    build_ratio[is.nan(build_ratio[])] <- 0
-    build_ratio[is.infinite(build_ratio[])] <- 0
-    build_ratio[] = ifelse(build_ratio[] <= 1, build_ratio[], 1)  
-    
-    baseline_ratio <- crop(baseline_ratio, build_ratio)
-    
-    ###
-    baseline <- baseline_ratio
-    build <- build_ratio
+    baseline <- raster(input$baseline_tiff$datapath)
+    build <- raster(input$project_tiff$datapath)
     
     project_extent <- st_as_sf(project_extent())
     project_extent <- st_transform(project_extent, crs = 3857)
@@ -277,13 +228,13 @@ server <- function(input, output, session) {
     clipped_weight <- mask(raster(input$weight_tiff$datapath), buffer_diss)
     weighted_differences_clipped <- (build_clipped * clipped_weight) - (baseline_clipped * clipped_weight)
     
-    if(input$map_options == "Baseline Accessibility Ratio") {
+    if(input$map_options == "Baseline Accessibility") {
       raster_file <- baseline_clipped
-    } else if(input$map_options == "Build Accessibility Ratio") {
+    } else if(input$map_options == "Project Accessibility") {
       raster_file <- build_clipped
-    } else if(input$map_options == "Change in Accessibility Ratio") {
+    } else if(input$map_options == "Accessibility Change") {
       raster_file <- difference_clipped
-    } else if(input$map_options == "Weighted Change in Accessibility Ratio") {
+    } else if(input$map_options == "Weighted Accessibility Change") {
       raster_file <- weighted_differences_clipped
     }
     
